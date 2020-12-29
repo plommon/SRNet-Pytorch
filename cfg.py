@@ -16,6 +16,7 @@ lf_theta_3 = 500.
 epsilon = 1e-8
 
 # train
+learning_rate = 1e-4
 g_lr = 1e-4
 d_lr = 1e-4
 decay_rate = 0.9
@@ -34,11 +35,13 @@ tensorboard_dir = 'model_logs/train_logs'
 
 # data
 # 批处理大小
-batch_size = 1
+batch_size = 8
 # 规定训练图片的形状
 data_shape = [64, None]
 # 训练数据地址
-data_dir = '../datasets/srnet_data'
+# data_dir = '../datasets/srnet_data'
+# data_dir = 'D:/Code/DeepLearning/datasets/srnet_data'
+data_dir = '/home/yfx/datasets/srnet_data'
 # 风格图像，包括背景和风格文字A
 i_s_dir = 'i_s'
 # 内容图像，灰色背景与标准字体的目标文字B

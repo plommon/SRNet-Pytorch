@@ -1,29 +1,13 @@
 import sys
 
-import numpy as np
-import torch
-import torchvision
 from torch.utils.tensorboard import SummaryWriter
 
-import cfg
 from datagen import srnet_datagen, get_input_data
 from loss import build_discriminator_loss, build_generator_loss
-from model import Generator, DiscriminatorMixed
+from model import Generator, DiscriminatorMixed, get_vgg_model
 from utils import *
 
 device = torch.device(cfg.gpu)
-
-
-def get_vgg_model():
-    vgg_model = torchvision.models.vgg19()
-    pre = torch.load(cfg.vgg19_weights)
-    vgg_model.load_state_dict(pre)
-    net_list = []
-    vgg_layers = [1, 6, 11, 20, 29]
-    for i in range(max(vgg_layers) + 1):
-        net_list.append(vgg_model.features[i])
-    net = torch.nn.Sequential(*net_list)
-    return net
 
 
 class Trainer:
@@ -174,27 +158,7 @@ class Trainer:
     def predict(self, i_t, i_s, to_shape=None):
         assert i_t.shape == i_s.shape and i_t.dtype == i_s.dtype
 
-        # 处理原始照片使之符合模型输入
-        if len(i_t.shape) == 3:
-            h, w = i_t.shape[:2]
-            if not to_shape:
-                to_shape = (w, h)  # w first for cv2
-            if i_t.shape[0] != cfg.data_shape[0]:
-                ratio = cfg.data_shape[0] / h
-                predict_h = cfg.data_shape[0]
-                predict_w = round(int(w * ratio) / 8) * 8
-                predict_scale = (predict_w, predict_h)  # w first for cv2
-                i_t = cv2.resize(i_t, predict_scale)
-                i_s = cv2.resize(i_s, predict_scale)
-            if i_t.dtype == np.uint8:
-                i_t = i_t.astype(np.float32) / 127.5 - 1
-                i_s = i_s.astype(np.float32) / 127.5 - 1
-            i_t = torch.from_numpy(np.expand_dims(i_t, axis=0))
-            i_s = torch.from_numpy(np.expand_dims(i_s, axis=0))
-
-            transpose_vector = [0, 3, 1, 2]
-            i_t = i_t.permute(transpose_vector)
-            i_s = i_s.permute(transpose_vector)
+        i_t, i_s, to_shape = pre_process_img(i_s, i_t, to_shape)
 
         o_sk, o_t, o_b, o_f = self.G([i_t.to(device), i_s.to(device)])
 

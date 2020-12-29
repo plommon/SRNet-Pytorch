@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
+import torchvision
 from torch import nn
+
+import cfg
 
 channels_num = 32
 encoder_feature_map_channels = [0, 4 * channels_num, 2 * channels_num]
@@ -152,7 +155,7 @@ class DecoderNet(nn.Module):
 
 
 class TextConversionNet(nn.Module):
-    def __init__(self, in_dim):
+    def __init__(self, in_dim=3):
         super(TextConversionNet, self).__init__()
         self.t_encoder = nn.Sequential(EncoderNet(in_dim),
                                        ResNet(8 * channels_num))
@@ -183,7 +186,7 @@ class TextConversionNet(nn.Module):
 
 
 class BackgroundInpaintingNet(nn.Module):
-    def __init__(self, in_dim):
+    def __init__(self, in_dim=3):
         super(BackgroundInpaintingNet, self).__init__()
         self.encoder = EncoderNet(in_dim)
         self.resnet = ResNet(8 * channels_num)
@@ -203,7 +206,7 @@ class BackgroundInpaintingNet(nn.Module):
 
 
 class FusionNet(nn.Module):
-    def __init__(self, in_dim):
+    def __init__(self, in_dim=3):
         super(FusionNet, self).__init__()
         self.encoder = EncoderNet(in_dim)
         self.resnet = ResNet(8 * channels_num)
@@ -270,3 +273,15 @@ class DiscriminatorMixed(nn.Module):
         o_db = self.D_background_inpainting(i_db)
         o_df = self.D_fusion(i_df)
         return o_db, o_df
+
+
+def get_vgg_model():
+    vgg_model = torchvision.models.vgg19()
+    pre = torch.load(cfg.vgg19_weights)
+    vgg_model.load_state_dict(pre)
+    net_list = []
+    vgg_layers = [1, 6, 11, 20, 29]
+    for i in range(max(vgg_layers) + 1):
+        net_list.append(vgg_model.features[i])
+    net = torch.nn.Sequential(*net_list)
+    return net

@@ -1,9 +1,9 @@
 import cv2
 
-image_path = '../examples/gen_logs/iter-500000/002_o_t.png'
+image_path = 'o_t/002_o_t.png'
 x = cv2.imread(image_path)
-h, w, c = x.shape
-filter_pixel = set([x[i][j][k] for i in range(h) for j in range(w) for k in range(c)])
+# h, w, c = x.shape
+# filter_pixel = set([x[i][j][k] for i in range(h) for j in range(w) for k in range(c)])
 
 # cv2.imshow('output', x)
 
