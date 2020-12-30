@@ -1,5 +1,5 @@
 # device
-gpu = 'cuda:0'
+gpu = 'cuda:1'
 
 # pretrained vgg
 vgg19_weights = 'model_logs/vgg19/vgg19-dcbb9e9d.pth'
@@ -59,3 +59,4 @@ t_sk_dir = 't_sk'
 
 example_data_dir = 'examples/labels'
 example_result_dir = 'examples/gen_logs'
+example_fusion_test_dir = 'examples/fusion_test'

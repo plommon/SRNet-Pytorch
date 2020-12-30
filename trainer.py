@@ -54,7 +54,6 @@ class Trainer:
         inputs = [i_t, i_s]
         labels = [t_sk, t_t, t_b, t_f]
 
-        # g_loss
         o_sk, o_t, o_b, o_f = self.G(inputs)
 
         i_db_true = torch.cat([t_b, i_s], dim=1)
@@ -65,6 +64,20 @@ class Trainer:
         i_df_pred = torch.cat([o_f, i_t], dim=1)
         i_df = torch.cat([i_df_true, i_df_pred], dim=0)
 
+        # d_loss
+        # 在前面G的训练已经更新了其参数，这里不再更新G的参数，否则会导致变量inplace操作，使得反向传播出现错误
+        o_db, o_df = self.D([i_db.detach(), i_df.detach()])
+
+        db_loss = build_discriminator_loss(o_db)
+        df_loss = build_discriminator_loss(o_df)
+        d_loss_detail = [db_loss, df_loss]
+        d_loss = torch.add(db_loss, df_loss)
+
+        self.reset_grad()
+        d_loss.backward()
+        self.d_optimizer.step()
+
+        # g_loss
         o_db, o_df = self.D([i_db, i_df])
 
         i_vgg = torch.cat([t_f, o_f], dim=0)
@@ -84,19 +97,6 @@ class Trainer:
         self.reset_grad()
         g_loss.backward()
         self.g_optimizer.step()
-
-        # d_loss
-        # 在前面G的训练已经更新了其参数，这里不再更新G的参数，否则会导致变量inplace操作，使得反向传播出现错误
-        o_db, o_df = self.D([i_db.detach(), i_df.detach()])
-
-        db_loss = build_discriminator_loss(o_db)
-        df_loss = build_discriminator_loss(o_df)
-        d_loss_detail = [db_loss, df_loss]
-        d_loss = torch.add(db_loss, df_loss)
-
-        self.reset_grad()
-        d_loss.backward()
-        self.d_optimizer.step()
 
         self.g_scheduler.step()
         self.d_scheduler.step()

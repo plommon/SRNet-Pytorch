@@ -10,7 +10,7 @@ import cfg
 from datagen import srnet_datagen, get_input_data
 from loss import build_l_t_loss
 from model import TextConversionNet
-from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result
+from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result, get_log_writer
 
 device = torch.device(cfg.gpu)
 
@@ -28,10 +28,7 @@ class TextConversionTrainer:
     def train(self):
         train_name = 't_' + get_train_name()
 
-        if sys.platform.startswith('win'):
-            self.writer = SummaryWriter('model_logs\\train_logs\\' + train_name)
-        else:
-            self.writer = SummaryWriter(os.path.join(cfg.tensorboard_dir, train_name))
+        self.writer = get_log_writer(train_name)
 
         for step in range(cfg.max_iter):
             global_step = step + 1
@@ -92,7 +89,7 @@ class TextConversionTrainer:
     def predict(self, i_t, i_s, to_shape=None):
         assert i_t.shape == i_s.shape and i_t.dtype == i_s.dtype
 
-        i_t, i_s, to_shape = pre_process_img(i_s, i_t, to_shape)
+        i_t, i_s, to_shape = pre_process_img(i_t, i_s, to_shape)
         o_sk, o_t = self.text_conversion_net(i_t.to(device), i_s.to(device))
 
         o_sk = o_sk.data.cpu()
@@ -105,7 +102,7 @@ class TextConversionTrainer:
         o_sk = cv2.resize((o_sk[0] * 255.).astype(np.uint8), to_shape, interpolation=cv2.INTER_NEAREST)
         o_t = cv2.resize(((o_t[0] + 1.) * 127.5).astype(np.uint8), to_shape)
 
-        return [o_sk, o_t]
+        return o_sk, o_t
 
     def predict_data_list(self, save_dir, input_data_list, mode=2):
         for data in input_data_list:

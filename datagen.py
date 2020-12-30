@@ -139,14 +139,18 @@ def background_inpainting_datagen():
 
 
 # 读取输入数据，该数据为测试用例
-def get_input_data(data_dir=cfg.example_data_dir):
+def get_input_data(data_dir=cfg.example_data_dir, is_fusion=False):
     data_list = os.listdir(data_dir)
     data_list = [data_name.split('_')[0] + '_' for data_name in data_list]
     data_list = list(set(data_list))
     res_list = []
     for data_name in data_list:
-        i_t = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 'i_t.png'))
-        i_s = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 'i_s.png'))
+        if is_fusion:
+            i_t = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 't_t.png'))
+            i_s = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 't_b.png'))
+        else:
+            i_t = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 'i_t.png'))
+            i_s = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 'i_s.png'))
 
         h, w = i_t.shape[:2]
         scale_ratio = cfg.data_shape[0] / h

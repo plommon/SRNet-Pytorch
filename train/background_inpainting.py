@@ -1,16 +1,14 @@
 import os
-import sys
 
 import cv2
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
 import cfg
 from datagen import background_inpainting_datagen, get_input_data
 from loss import build_discriminator_loss, build_l_b_loss
 from model import BackgroundInpaintingNet, Discriminator
-from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result
+from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result, get_log_writer
 
 device = torch.device(cfg.gpu)
 
@@ -33,10 +31,7 @@ class BackgroundInpaintingTrainer:
     def train(self):
         train_name = 'b_' + get_train_name()
 
-        if sys.platform.startswith('win'):
-            self.writer = SummaryWriter('model_logs\\train_logs\\' + train_name)
-        else:
-            self.writer = SummaryWriter(os.path.join(cfg.tensorboard_dir, train_name))
+        self.writer = get_log_writer(train_name)
 
         for step in range(cfg.max_iter):
             global_step = step + 1
@@ -77,13 +72,15 @@ class BackgroundInpaintingTrainer:
         i_db_pred = torch.cat([o_b, i_s], dim=1)
         i_db = torch.cat([i_db_true, i_db_pred], dim=0)
 
-        o_db = self.D(i_db)
+        o_db = self.D(i_db.detach())
+
         d_loss = build_discriminator_loss(o_db)
 
         self.d_optimizer.zero_grad()
         d_loss.backward()
         self.d_optimizer.step()
 
+        o_db = self.D(i_db)
         g_loss, g_loss_detail = build_l_b_loss(o_db, o_b, t_b)
 
         self.g_optimizer.zero_grad()
@@ -109,8 +106,10 @@ class BackgroundInpaintingTrainer:
     def predict(self, i_t, i_s, to_shape=None):
         assert i_t.shape == i_s.shape and i_t.dtype == i_s.dtype
 
-        i_t, i_s, to_shape = pre_process_img(i_s, i_t, to_shape)
-        o_b = self.G(i_s.to(device))
+        i_t, i_s, to_shape = pre_process_img(i_t, i_s, to_shape)
+        o_b, _ = self.G(i_s.to(device))
+
+        o_b = o_b.data.cpu()
 
         transpose_vector = [0, 2, 3, 1]
         o_b = o_b.permute(transpose_vector).numpy()

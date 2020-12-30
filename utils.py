@@ -1,9 +1,11 @@
 import os
+import sys
 from datetime import datetime
 
 import cv2
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
 import cfg
 
@@ -86,3 +88,11 @@ def pre_process_img(i_t, i_s, to_shape):
         i_t = i_t.permute(transpose_vector)
         i_s = i_s.permute(transpose_vector)
     return i_t, i_s, to_shape
+
+
+def get_log_writer(train_name):
+    if sys.platform.startswith('win'):
+        writer = SummaryWriter('model_logs\\train_logs\\' + train_name)
+    else:
+        writer = SummaryWriter(os.path.join(cfg.tensorboard_dir, train_name))
+    return writer

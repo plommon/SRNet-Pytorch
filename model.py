@@ -221,6 +221,23 @@ class FusionNet(nn.Module):
         return self.last(out)
 
 
+class NewFusionNet(nn.Module):
+    def __init__(self, in_dim=6):
+        super(NewFusionNet, self).__init__()
+        self.encoder = EncoderNet(in_dim)
+        self.resnet = ResNet(8 * channels_num)
+        self.decoder = DecoderNet(8 * channels_num)
+        self.last = nn.Sequential(nn.Conv2d(channels_num, 3, kernel_size=3, padding=1),
+                                  nn.Tanh())
+
+    def forward(self, t_t, t_b):
+        out = torch.cat([t_t, t_b], dim=1)
+        out = self.encoder(out)
+        out = self.resnet(out)
+        out = self.decoder(out)
+        return self.last(out)
+
+
 class Generator(nn.Module):
     def __init__(self, in_dim=3):
         super(Generator, self).__init__()

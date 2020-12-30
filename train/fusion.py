@@ -1,16 +1,14 @@
 import os
-import sys
 
 import cv2
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
 import cfg
 from datagen import srnet_datagen, get_input_data
 from loss import build_discriminator_loss, build_l_f_loss
-from model import FusionNet, Discriminator, get_vgg_model
-from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result
+from model import NewFusionNet, Discriminator, get_vgg_model
+from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result, get_log_writer
 
 device = torch.device(cfg.gpu)
 
@@ -21,7 +19,7 @@ class Fusion:
 
         self.vgg_selected_net = get_vgg_model().to(device)
 
-        self.G = FusionNet().to(device)
+        self.G = NewFusionNet().to(device)
         self.g_optimizer = torch.optim.Adam(self.G.parameters(), lr=cfg.learning_rate)
         self.g_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.g_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
@@ -35,10 +33,7 @@ class Fusion:
     def train(self):
         train_name = 'f_' + get_train_name()
 
-        if sys.platform.startswith('win'):
-            self.writer = SummaryWriter('model_logs\\train_logs\\' + train_name)
-        else:
-            self.writer = SummaryWriter(os.path.join(cfg.tensorboard_dir, train_name))
+        self.writer = get_log_writer(train_name)
 
         for step in range(cfg.max_iter):
             global_step = step + 1
@@ -57,7 +52,7 @@ class Fusion:
             if global_step % cfg.gen_example_interval == 0:
                 save_dir = os.path.join(cfg.example_result_dir, train_name,
                                         'iter-' + str(global_step).zfill(len(str(cfg.max_iter))))
-                self.predict_data_list(save_dir, get_input_data())
+                self.predict_data_list(save_dir, get_input_data(cfg.example_fusion_test_dir, is_fusion=True))
                 print_log("example generated in dir {}".format(save_dir), content_color=PrintColor['green'])
 
             # 保存模型
@@ -75,13 +70,23 @@ class Fusion:
         t_b = t_b.to(device)
         t_f = t_f.to(device)
 
-        # g_loss
         o_f = self.G(t_t, t_b)
 
         i_df_true = torch.cat([t_f, i_t], dim=1)
         i_df_pred = torch.cat([o_f, i_t], dim=1)
         i_df = torch.cat([i_df_true, i_df_pred], dim=0)
 
+        # d_loss
+        # 在前面G的训练已经更新了其参数，这里不再更新G的参数，否则会导致变量inplace操作，使得反向传播出现错误
+        o_df = self.D(i_df.detach())
+
+        d_loss = build_discriminator_loss(o_df)
+
+        self.d_optimizer.zero_grad()
+        d_loss.backward()
+        self.d_optimizer.step()
+
+        # g_loss
         o_df = self.D(i_df)
 
         i_vgg = torch.cat([t_f, o_f], dim=0)
@@ -98,16 +103,6 @@ class Fusion:
         self.g_optimizer.zero_grad()
         g_loss.backward()
         self.g_optimizer.step()
-
-        # d_loss
-        # 在前面G的训练已经更新了其参数，这里不再更新G的参数，否则会导致变量inplace操作，使得反向传播出现错误
-        o_df = self.D(i_df.detach())
-
-        d_loss = build_discriminator_loss(o_df)
-
-        self.d_optimizer.zero_grad()
-        d_loss.backward()
-        self.d_optimizer.step()
 
         self.g_scheduler.step()
         self.d_scheduler.step()
@@ -133,6 +128,8 @@ class Fusion:
         t_t, t_b, to_shape = pre_process_img(t_b, t_t, to_shape)
         o_f = self.G(t_t.to(device), t_b.to(device))
 
+        o_f = o_f.data.cpu()
+
         transpose_vector = [0, 2, 3, 1]
         o_f = o_f.permute(transpose_vector).numpy()
 
@@ -142,6 +139,6 @@ class Fusion:
 
     def predict_data_list(self, save_dir, input_data_list, mode=4):
         for data in input_data_list:
-            i_t, i_s, original_shape, data_name = data
-            result = self.predict(i_t, i_s, original_shape)
+            t_t, t_b, original_shape, data_name = data
+            result = self.predict(t_t, t_b, original_shape)
             save_result(save_dir, result, data_name, mode=mode)

@@ -7,27 +7,32 @@ def build_discriminator_loss(x):
     x_true, x_pred = torch.chunk(x, 2)
     d_loss = -torch.mean(torch.log(torch.clamp(x_true, cfg.epsilon, 1.0))
                          + torch.log(torch.clamp(1.0 - x_pred, cfg.epsilon, 1.0)))
+
     return d_loss
 
 
 def build_dice_loss(x_t, x_o):
     intersection = torch.sum(x_t * x_o, dim=[1, 2, 3])
     union = torch.sum(x_t, dim=[1, 2, 3]) + torch.sum(x_o, dim=[1, 2, 3])
+
     return 1. - torch.mean((2 * intersection + cfg.epsilon) / (union + cfg.epsilon), dim=0)
 
 
 def build_l1_loss_with_mask(x_t, x_o, mask):
     mask_ratio = 1. - torch.sum(mask) / torch.tensor(torch.numel(mask), dtype=torch.float32)
     l1 = torch.abs(x_t - x_o)
+
     return mask_ratio * torch.mean(l1 * mask) + (1. - mask_ratio) * torch.mean(l1 * (1. - mask))
 
 
 def build_l1_loss(x_t, x_o):
+
     return torch.mean(torch.abs(x_t - x_o))
 
 
 def build_gan_loss(x):
     x_true, x_pred = torch.chunk(x, 2)
+
     return -torch.mean(torch.log(torch.clamp(x_pred, cfg.epsilon, 1.0)))
 
 
@@ -37,6 +42,7 @@ def build_perceptual_loss(x):
         l.append(build_l1_loss(f[0], f[1]))
     l = torch.stack(l, dim=0)
     l = torch.sum(l)
+
     return l
 
 
@@ -45,6 +51,7 @@ def build_gram_matrix(x):
     feature = x.view(batch_size, channel, h * w)
     feature_t = feature.transpose(1, 2)
     gram = torch.bmm(feature, feature_t) / torch.tensor(channel * h * w, dtype=torch.float32)
+
     return gram
 
 
@@ -58,6 +65,7 @@ def build_style_loss(x):
         l.append(f_norm * build_l1_loss(gram_true, gram_pred))
     l = torch.stack(l, dim=0)
     l = torch.sum(l)
+
     return l
 
 
@@ -67,6 +75,7 @@ def build_vgg_loss(x):
         split.append(torch.chunk(f, 2))
     l_per = build_perceptual_loss(split)
     l_style = build_style_loss(split)
+
     return l_per, l_style
 
 
@@ -81,13 +90,16 @@ def build_l_t_loss(o_sk, o_t, t_sk, t_t, mask_t):
 
 
 def build_l_b_loss(o_db, o_b, t_b):
+
     l_b_gan = build_gan_loss(o_db)
     l_b_l1 = cfg.lb_beta * build_l1_loss(t_b, o_b)
     l_b = l_b_gan + l_b_l1
+
     return l_b, [l_b_gan, l_b_l1]
 
 
 def build_l_f_loss(o_df, o_f, o_vgg, t_f):
+
     l_f_gan = build_gan_loss(o_df)
     l_f_l1 = cfg.lf_theta_1 * build_l1_loss(t_f, o_f)
     l_f_vgg_per, l_f_vgg_style = build_vgg_loss(o_vgg)
@@ -100,6 +112,7 @@ def build_l_f_loss(o_df, o_f, o_vgg, t_f):
 
 
 def build_generator_loss(out_g, out_d, labels, out_vgg):
+
     o_sk, o_t, o_b, o_f, mask_t = out_g
     o_db, o_df = out_d
     o_vgg = out_vgg
