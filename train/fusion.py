@@ -13,9 +13,9 @@ from utils import get_train_name, print_log, PrintColor, pre_process_img, save_r
 device = torch.device(cfg.gpu)
 
 
-class Fusion:
-    def __init__(self):
-        self.data_iter = srnet_datagen()
+class FusionTrainer:
+    def __init__(self, data_dir):
+        self.data_iter = srnet_datagen(data_dir)
 
         self.vgg_selected_net = get_vgg_model().to(device)
 
@@ -46,7 +46,7 @@ class Fusion:
 
             # 写tensorboard
             if global_step % cfg.write_log_interval == 0:
-                self.write_summary(g_loss, g_loss_detail, d_loss, step)
+                self.write_summary(g_loss, g_loss_detail, d_loss, global_step)
 
             # 生成example
             if global_step % cfg.gen_example_interval == 0:
@@ -82,7 +82,7 @@ class Fusion:
 
         d_loss = build_discriminator_loss(o_df)
 
-        self.d_optimizer.zero_grad()
+        self.reset_grad()
         d_loss.backward()
         self.d_optimizer.step()
 
@@ -100,7 +100,7 @@ class Fusion:
 
         g_loss, g_loss_detail = build_l_f_loss(o_df, o_f, out_vgg, t_f)
 
-        self.g_optimizer.zero_grad()
+        self.reset_grad()
         g_loss.backward()
         self.g_optimizer.step()
 
@@ -108,6 +108,10 @@ class Fusion:
         self.d_scheduler.step()
 
         return d_loss, g_loss, g_loss_detail
+
+    def reset_grad(self):
+        self.d_optimizer.zero_grad()
+        self.g_optimizer.zero_grad()
 
     def write_summary(self, g_loss, g_loss_detail, d_loss, step):
         self.writer.add_scalar('g_loss', g_loss, step)

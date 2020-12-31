@@ -14,15 +14,15 @@ device = torch.device(cfg.gpu)
 
 
 class BackgroundInpaintingTrainer:
-    def __init__(self):
-        self.data_iter = background_inpainting_datagen()
+    def __init__(self, data_dir):
+        self.data_iter = background_inpainting_datagen(data_dir)
 
         self.G = BackgroundInpaintingNet().to(device)
         self.g_optimizer = torch.optim.Adam(self.G.parameters(), lr=cfg.learning_rate)
         self.g_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.g_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
         self.D = Discriminator().to(device)
-        self.d_optimizer = torch.optim.Adam(self.D.parameters(), lr=cfg.learning_rate)
+        self.d_optimizer = torch.optim.Adam(self.D.parameters(), lr=0.25 * cfg.learning_rate)
         self.d_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.d_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
 
@@ -44,7 +44,7 @@ class BackgroundInpaintingTrainer:
 
             # 写tensorboard
             if global_step % cfg.write_log_interval == 0:
-                self.write_summary(g_loss, g_loss_detail, d_loss, step)
+                self.write_summary(g_loss, g_loss_detail, d_loss, global_step)
 
             # 生成example
             if global_step % cfg.gen_example_interval == 0:
@@ -76,14 +76,14 @@ class BackgroundInpaintingTrainer:
 
         d_loss = build_discriminator_loss(o_db)
 
-        self.d_optimizer.zero_grad()
+        self.reset_grad()
         d_loss.backward()
         self.d_optimizer.step()
 
         o_db = self.D(i_db)
         g_loss, g_loss_detail = build_l_b_loss(o_db, o_b, t_b)
 
-        self.g_optimizer.zero_grad()
+        self.reset_grad()
         g_loss.backward()
         self.g_optimizer.step()
 
@@ -91,6 +91,10 @@ class BackgroundInpaintingTrainer:
         self.g_scheduler.step()
 
         return g_loss, g_loss_detail, d_loss
+
+    def reset_grad(self):
+        self.d_optimizer.zero_grad()
+        self.g_optimizer.zero_grad()
 
     def write_summary(self, g_loss, g_loss_detail, d_loss, step):
         self.writer.add_scalar('g_loss', g_loss, step)

@@ -26,7 +26,6 @@ def build_l1_loss_with_mask(x_t, x_o, mask):
 
 
 def build_l1_loss(x_t, x_o):
-
     return torch.mean(torch.abs(x_t - x_o))
 
 
@@ -79,18 +78,17 @@ def build_vgg_loss(x):
     return l_per, l_style
 
 
-def build_l_t_loss(o_sk, o_t, t_sk, t_t, mask_t):
-
+def build_l_t_loss(o_sk, o_t, o_dt, t_sk, t_t, mask_t):
+    l_t_gan = build_gan_loss(o_dt)
     l_t_sk = cfg.lt_alpha * build_dice_loss(t_sk, o_sk)
     l_t_l1 = build_l1_loss_with_mask(t_t, o_t, mask_t)
 
-    l_t = l_t_l1 + l_t_sk
+    l_t = l_t_gan + l_t_l1 + l_t_sk
 
-    return l_t, [l_t_sk, l_t_l1]
+    return l_t, [l_t_gan, l_t_sk, l_t_l1]
 
 
 def build_l_b_loss(o_db, o_b, t_b):
-
     l_b_gan = build_gan_loss(o_db)
     l_b_l1 = cfg.lb_beta * build_l1_loss(t_b, o_b)
     l_b = l_b_gan + l_b_l1
@@ -99,7 +97,6 @@ def build_l_b_loss(o_db, o_b, t_b):
 
 
 def build_l_f_loss(o_df, o_f, o_vgg, t_f):
-
     l_f_gan = build_gan_loss(o_df)
     l_f_l1 = cfg.lf_theta_1 * build_l1_loss(t_f, o_f)
     l_f_vgg_per, l_f_vgg_style = build_vgg_loss(o_vgg)
@@ -112,7 +109,6 @@ def build_l_f_loss(o_df, o_f, o_vgg, t_f):
 
 
 def build_generator_loss(out_g, out_d, labels, out_vgg):
-
     o_sk, o_t, o_b, o_f, mask_t = out_g
     o_db, o_df = out_d
     o_vgg = out_vgg

@@ -45,11 +45,11 @@ def conv_bn_relu(in_channels, out_channels):
     return blk
 
 
-# def dilated_conv(in_dim, padding=2, dilation=2):
-#     blk = nn.Sequential(nn.Conv2d(in_dim, in_dim, kernel_size=3, padding=padding, dilation=dilation),
-#                         nn.BatchNorm2d(in_dim),
-#                         nn.LeakyReLU())
-#     return blk
+def dilated_conv(in_dim, padding=2, dilation=2):
+    blk = nn.Sequential(nn.Conv2d(in_dim, in_dim, kernel_size=3, padding=padding, dilation=dilation),
+                        nn.BatchNorm2d(in_dim),
+                        nn.LeakyReLU())
+    return blk
 
 
 class EncoderNet(nn.Module):
@@ -189,18 +189,18 @@ class BackgroundInpaintingNet(nn.Module):
     def __init__(self, in_dim=3):
         super(BackgroundInpaintingNet, self).__init__()
         self.encoder = EncoderNet(in_dim)
-        self.resnet = ResNet(8 * channels_num)
-        # self.dilation_net = nn.Sequential(dilated_conv(8 * channels_num),
-        #                                   dilated_conv(8 * channels_num, padding=4, dilation=4),
-        #                                   dilated_conv(8 * channels_num, padding=8, dilation=8))
+        # self.resnet = ResNet(8 * channels_num)
+        self.dilation_net = nn.Sequential(dilated_conv(8 * channels_num),
+                                          dilated_conv(8 * channels_num, padding=4, dilation=4),
+                                          dilated_conv(8 * channels_num, padding=8, dilation=8))
         self.decoder = DecoderNet(8 * channels_num, encoder_feature_map_channels)
         self.last = nn.Sequential(nn.Conv2d(channels_num, 3, kernel_size=3, padding=1),
                                   nn.Tanh())
 
     def forward(self, x):
         out, f_encoder = self.encoder(x, get_feature_map=True)
-        out = self.resnet(out)
-        # out = self.dilation_net(out)
+        # out = self.resnet(out)
+        out = self.dilation_net(out)
         out, fuse = self.decoder(out, [None] + f_encoder, get_feature_map=True)
         return self.last(out), fuse
 
@@ -257,6 +257,7 @@ class Discriminator(nn.Module):
     def __init__(self, in_dim=6):
         super(Discriminator, self).__init__()
         self.conv1 = nn.Sequential(nn.Conv2d(in_dim, 64, kernel_size=3, stride=2, padding=1),
+                                   nn.BatchNorm2d(64),
                                    nn.LeakyReLU())
         self.conv2 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
                                    nn.BatchNorm2d(128),

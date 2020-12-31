@@ -1,28 +1,30 @@
 import os
-import sys
 
 import cv2
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
 import cfg
 from datagen import srnet_datagen, get_input_data
-from loss import build_l_t_loss
-from model import TextConversionNet
+from loss import build_l_t_loss, build_discriminator_loss
+from model import TextConversionNet, Discriminator
 from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result, get_log_writer
 
 device = torch.device(cfg.gpu)
 
 
 class TextConversionTrainer:
-    def __init__(self):
-        self.data_iter = srnet_datagen()
+    def __init__(self, data_dir):
+        self.data_iter = srnet_datagen(data_dir)
 
-        self.text_conversion_net = TextConversionNet().to(device)
-        self.optimizer = torch.optim.Adam(self.text_conversion_net.parameters(), lr=cfg.learning_rate)
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer,
-                                                                (cfg.decay_rate ** (1 / cfg.decay_steps)))
+        self.G = TextConversionNet().to(device)
+        self.g_optimizer = torch.optim.Adam(self.G.parameters(), lr=cfg.learning_rate)
+        self.g_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.g_optimizer,
+                                                                  (cfg.decay_rate ** (1 / cfg.decay_steps)))
+        self.D = Discriminator(in_dim=3).to(device)
+        self.d_optimizer = torch.optim.Adam(self.D.parameters(), lr=cfg.learning_rate)
+        self.d_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.d_optimizer,
+                                                                  (cfg.decay_rate ** (1 / cfg.decay_steps)))
         self.writer = None
 
     def train(self):
@@ -33,15 +35,15 @@ class TextConversionTrainer:
         for step in range(cfg.max_iter):
             global_step = step + 1
 
-            loss, loss_detail = self.train_step(next(self.data_iter))
+            d_loss, g_loss, g_loss_detail = self.train_step(next(self.data_iter))
 
             # 打印loss信息
             if global_step % cfg.show_loss_interval == 0 or step == 0:
-                print_log("step: {:>6d}   loss: {:>3.5f}".format(global_step, loss))
+                print_log("step: {:>6d}   d_loss: {:>3.5f}   g_loss: {:>3.5f}".format(global_step, d_loss, g_loss))
 
             # 写tensorboard
             if global_step % cfg.write_log_interval == 0:
-                self.write_summary(loss, loss_detail, step)
+                self.write_summary(g_loss, g_loss_detail, d_loss, global_step)
 
             # 生成example
             if global_step % cfg.gen_example_interval == 0:
@@ -65,32 +67,53 @@ class TextConversionTrainer:
         t_t = t_t.to(device)
         mask_t = mask_t.to(device)
 
-        o_sk, o_t = self.text_conversion_net(i_t, i_s)
+        o_sk, o_t = self.G(i_t, i_s)
 
-        loss, loss_detail = build_l_t_loss(o_sk, o_t, t_sk, t_t, mask_t)
+        i_dt = torch.cat([t_t, o_t], dim=0)
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        # d_loss
+        o_dt = self.D(i_dt.detach())
 
-        self.scheduler.step()
+        d_loss = build_discriminator_loss(o_dt)
 
-        return loss, loss_detail
+        self.reset_grad()
+        d_loss.backward()
+        self.d_optimizer.step()
 
-    def write_summary(self, loss, loss_detail, step):
-        self.writer.add_scalar('loss', loss, step)
-        self.writer.add_scalar('l_t_sk', loss_detail[0], step)
-        self.writer.add_scalar('l_t_l1', loss_detail[1], step)
+        # g_loss
+        o_dt = self.D(i_dt)
+        g_loss, g_loss_detail = build_l_t_loss(o_sk, o_t, o_dt, t_sk, t_t, mask_t)
+
+        self.g_optimizer.zero_grad()
+        g_loss.backward()
+        self.g_optimizer.step()
+
+        self.d_scheduler.step()
+        self.g_scheduler.step()
+
+        return d_loss, g_loss, g_loss_detail
+
+    def reset_grad(self):
+        self.d_optimizer.zero_grad()
+        self.g_optimizer.zero_grad()
+
+    def write_summary(self, g_loss, g_loss_detail, d_loss, step):
+        self.writer.add_scalar('g_loss', g_loss, step)
+        self.writer.add_scalar('l_t_gan', g_loss_detail[0], step)
+        self.writer.add_scalar('l_t_sk', g_loss_detail[1], step)
+        self.writer.add_scalar('l_t_l1', g_loss_detail[2], step)
+
+        self.writer.add_scalar('d_loss', d_loss, step)
 
     def save_checkpoint(self, save_dir):
         os.makedirs(save_dir)
-        torch.save(self.text_conversion_net.state_dict(), os.path.join(save_dir, 'TextConversion.pth'))
+        torch.save(self.G.state_dict(), os.path.join(save_dir, 'TextConversion.pth'))
 
     def predict(self, i_t, i_s, to_shape=None):
         assert i_t.shape == i_s.shape and i_t.dtype == i_s.dtype
 
         i_t, i_s, to_shape = pre_process_img(i_t, i_s, to_shape)
-        o_sk, o_t = self.text_conversion_net(i_t.to(device), i_s.to(device))
+        o_sk, o_t = self.G(i_t.to(device), i_s.to(device))
 
         o_sk = o_sk.data.cpu()
         o_t = o_t.data.cpu()

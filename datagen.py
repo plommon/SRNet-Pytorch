@@ -11,9 +11,9 @@ transpose_vector = [0, 3, 1, 2]
 
 
 # 迭代器，生成训练数据
-def srnet_datagen():
+def srnet_datagen(data_dir=cfg.data_dir):
     # 读取所有图片的名字
-    name_list = os.listdir(os.path.join(cfg.data_dir, cfg.t_b_dir))
+    name_list = os.listdir(os.path.join(data_dir, cfg.t_b_dir))
     random.shuffle(name_list)
     name_num = len(name_list)
     idx = 0
@@ -90,9 +90,9 @@ def srnet_datagen():
 
 
 # 迭代器，生成训练数据
-def background_inpainting_datagen():
+def background_inpainting_datagen(data_dir=cfg.data_dir):
     # 读取所有图片的名字
-    name_list = os.listdir(os.path.join(cfg.data_dir, cfg.t_b_dir))
+    name_list = os.listdir(os.path.join(data_dir, cfg.t_b_dir))
     random.shuffle(name_list)
     name_num = len(name_list)
     idx = 0
@@ -146,11 +146,11 @@ def get_input_data(data_dir=cfg.example_data_dir, is_fusion=False):
     res_list = []
     for data_name in data_list:
         if is_fusion:
-            i_t = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 't_t.png'))
-            i_s = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 't_b.png'))
+            i_t = cv2.imread(os.path.join(data_dir, data_name + 't_t.png'))
+            i_s = cv2.imread(os.path.join(data_dir, data_name + 't_b.png'))
         else:
-            i_t = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 'i_t.png'))
-            i_s = cv2.imread(os.path.join(cfg.example_data_dir, data_name + 'i_s.png'))
+            i_t = cv2.imread(os.path.join(data_dir, data_name + 'i_t.png'))
+            i_s = cv2.imread(os.path.join(data_dir, data_name + 'i_s.png'))
 
         h, w = i_t.shape[:2]
         scale_ratio = cfg.data_shape[0] / h
@@ -172,3 +172,4 @@ if __name__ == '__main__':
         print(data[0].shape)
         break
     get_input_data()
+    get_input_data(cfg.example_fusion_test_dir, is_fusion=True)
