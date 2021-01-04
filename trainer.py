@@ -1,7 +1,3 @@
-import sys
-
-from torch.utils.tensorboard import SummaryWriter
-
 from datagen import srnet_datagen, get_input_data
 from loss import build_discriminator_loss, build_generator_loss
 from model import Generator, DiscriminatorMixed, get_vgg_model
@@ -14,8 +10,6 @@ class Trainer:
     def __init__(self):
         self.data_iter = srnet_datagen()
 
-        self.g_lr = cfg.g_lr
-        self.d_lr = cfg.d_lr
         self.beta1 = cfg.beta1
         self.beta2 = cfg.beta2
 
@@ -27,9 +21,9 @@ class Trainer:
         # self.multi_GPU()
 
         self.g_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.G.parameters()),
-                                            self.g_lr, (self.beta1, self.beta2))
+                                            cfg.learning_rate, (self.beta1, self.beta2))
         self.d_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.D.parameters()),
-                                            self.d_lr, (self.beta1, self.beta2))
+                                            cfg.learning_rate, (self.beta1, self.beta2))
         self.g_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.g_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
         self.d_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.d_optimizer,
