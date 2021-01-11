@@ -7,7 +7,7 @@ import torch
 import cfg
 from datagen import srnet_datagen, get_input_data
 from loss import build_l_t_loss, build_discriminator_loss
-from model import TextConversionNet, Discriminator
+from model import TextConversionNet, DiscriminatorMixed
 from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result, get_log_writer
 
 device = torch.device(cfg.gpu)
@@ -21,7 +21,7 @@ class TextConversionTrainer:
         self.g_optimizer = torch.optim.Adam(self.G.parameters(), lr=cfg.learning_rate)
         self.g_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.g_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
-        self.D = Discriminator(in_dim=3).to(device)
+        self.D = DiscriminatorMixed(in_dim1=4, in_dim2=6).to(device)
         self.d_optimizer = torch.optim.Adam(self.D.parameters(), lr=cfg.learning_rate)
         self.d_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.d_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
@@ -35,7 +35,7 @@ class TextConversionTrainer:
         for step in range(cfg.max_iter):
             global_step = step + 1
 
-            d_loss, g_loss, g_loss_detail = self.train_step(next(self.data_iter))
+            d_loss, g_loss, g_loss_detail, d_loss_detail = self.train_step(next(self.data_iter))
 
             # 打印loss信息
             if global_step % cfg.show_loss_interval == 0 or step == 0:
@@ -43,7 +43,7 @@ class TextConversionTrainer:
 
             # 写tensorboard
             if global_step % cfg.write_log_interval == 0:
-                self.write_summary(g_loss, g_loss_detail, d_loss, global_step)
+                self.write_summary(g_loss, g_loss_detail, d_loss, d_loss_detail, global_step)
 
             # 生成example
             if global_step % cfg.gen_example_interval == 0:
@@ -69,41 +69,53 @@ class TextConversionTrainer:
 
         o_sk, o_t = self.G(i_t, i_s)
 
-        i_dt = torch.cat([t_t, o_t], dim=0)
+        i_dsk_true = torch.cat([t_sk, i_t], dim=1)
+        i_dsk_pred = torch.cat([o_sk, i_t], dim=1)
+        i_dsk = torch.cat([i_dsk_true, i_dsk_pred])
+
+        i_dt_true = torch.cat([t_t, i_t], dim=1)
+        i_dt_pred = torch.cat([o_t, i_t], dim=1)
+        i_dt = torch.cat([i_dt_true, i_dt_pred], dim=0)
 
         # d_loss
-        o_dt = self.D(i_dt.detach())
+        o_dsk, o_dt = self.D([i_dsk.detach(), i_dt.detach()])
 
-        d_loss = build_discriminator_loss(o_dt)
+        dt_loss = build_discriminator_loss(o_dt)
+        dsk_loss = build_discriminator_loss(o_dsk)
+        dt_loss_detail = [dt_loss, dsk_loss]
+        d_loss = torch.add(dt_loss, dsk_loss)
 
         self.reset_grad()
         d_loss.backward()
         self.d_optimizer.step()
 
         # g_loss
-        o_dt = self.D(i_dt)
-        g_loss, g_loss_detail = build_l_t_loss(o_sk, o_t, o_dt, t_sk, t_t, mask_t)
+        o_dsk, o_dt = self.D([i_dsk, i_dt])
+        g_loss, g_loss_detail = build_l_t_loss(o_sk, o_t, o_dt, o_dsk, t_sk, t_t, mask_t)
 
-        self.g_optimizer.zero_grad()
+        self.reset_grad()
         g_loss.backward()
         self.g_optimizer.step()
 
         self.d_scheduler.step()
         self.g_scheduler.step()
 
-        return d_loss, g_loss, g_loss_detail
+        return d_loss, g_loss, g_loss_detail, dt_loss_detail
 
     def reset_grad(self):
         self.d_optimizer.zero_grad()
         self.g_optimizer.zero_grad()
 
-    def write_summary(self, g_loss, g_loss_detail, d_loss, step):
+    def write_summary(self, g_loss, g_loss_detail, d_loss, d_loss_detail, step):
         self.writer.add_scalar('g_loss', g_loss, step)
         self.writer.add_scalar('l_t_gan', g_loss_detail[0], step)
-        self.writer.add_scalar('l_t_sk', g_loss_detail[1], step)
-        self.writer.add_scalar('l_t_l1', g_loss_detail[2], step)
+        self.writer.add_scalar('l_sk_gan', g_loss_detail[1], step)
+        self.writer.add_scalar('l_t_sk', g_loss_detail[2], step)
+        self.writer.add_scalar('l_t_l1', g_loss_detail[3], step)
 
         self.writer.add_scalar('d_loss', d_loss, step)
+        self.writer.add_scalar('dt_loss', d_loss_detail[0], step)
+        self.writer.add_scalar('dsk_loss', d_loss_detail[1], step)
 
     def save_checkpoint(self, save_dir):
         os.makedirs(save_dir)

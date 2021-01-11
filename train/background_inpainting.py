@@ -7,7 +7,7 @@ import torch
 import cfg
 from datagen import background_inpainting_datagen, get_input_data
 from loss import build_discriminator_loss, build_l_b_loss
-from model import BackgroundInpaintingNet, Discriminator
+from model import BackgroundInpaintingNet, SNDiscriminator
 from utils import get_train_name, print_log, PrintColor, pre_process_img, save_result, get_log_writer
 
 device = torch.device(cfg.gpu)
@@ -21,8 +21,8 @@ class BackgroundInpaintingTrainer:
         self.g_optimizer = torch.optim.Adam(self.G.parameters(), lr=cfg.learning_rate)
         self.g_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.g_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
-        self.D = Discriminator().to(device)
-        self.d_optimizer = torch.optim.Adam(self.D.parameters(), lr=0.25 * cfg.learning_rate)
+        self.D = SNDiscriminator().to(device)
+        self.d_optimizer = torch.optim.Adam(self.D.parameters(), lr=cfg.learning_rate)
         self.d_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.d_optimizer,
                                                                   (cfg.decay_rate ** (1 / cfg.decay_steps)))
 

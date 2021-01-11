@@ -4,10 +4,7 @@ import torchvision
 from torch import nn
 
 import cfg
-
-channels_num = 32
-encoder_feature_map_channels = [0, 4 * channels_num, 2 * channels_num]
-decoder_feature_map_channels = [8 * channels_num, 4 * channels_num, 2 * channels_num]
+from spectral_norm import SpectralNorm
 
 
 class Residual(nn.Module):
@@ -57,23 +54,23 @@ class EncoderNet(nn.Module):
         super(EncoderNet, self).__init__()
         layer1, layer2, layer3, layer4 = [], [], [], []
 
-        layer1.append(conv_bn_relu(in_dim, channels_num))
-        layer1.append(conv_bn_relu(channels_num, channels_num))
+        layer1.append(conv_bn_relu(in_dim, 32))
+        layer1.append(conv_bn_relu(32, 32))
 
-        layer2.append(nn.Conv2d(channels_num, 2 * channels_num, kernel_size=3, stride=2, padding=1))
+        layer2.append(nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1))
         layer2.append(nn.LeakyReLU())
-        layer2.append(conv_bn_relu(2 * channels_num, 2 * channels_num))
-        layer2.append(conv_bn_relu(2 * channels_num, 2 * channels_num))
+        layer2.append(conv_bn_relu(64, 64))
+        layer2.append(conv_bn_relu(64, 64))
 
-        layer3.append(nn.Conv2d(2 * channels_num, 4 * channels_num, kernel_size=3, stride=2, padding=1))
+        layer3.append(nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1))
         layer3.append(nn.LeakyReLU())
-        layer3.append(conv_bn_relu(4 * channels_num, 4 * channels_num))
-        layer3.append(conv_bn_relu(4 * channels_num, 4 * channels_num))
+        layer3.append(conv_bn_relu(128, 128))
+        layer3.append(conv_bn_relu(128, 128))
 
-        layer4.append(nn.Conv2d(4 * channels_num, 8 * channels_num, kernel_size=3, stride=2, padding=1))
+        layer4.append(nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1))
         layer4.append(nn.LeakyReLU())
-        layer4.append(conv_bn_relu(8 * channels_num, 8 * channels_num))
-        layer4.append(conv_bn_relu(8 * channels_num, 8 * channels_num))
+        layer4.append(conv_bn_relu(256, 256))
+        layer4.append(conv_bn_relu(256, 256))
 
         self.l1 = nn.Sequential(*layer1)
         self.l2 = nn.Sequential(*layer2)
@@ -102,30 +99,24 @@ class DecoderNet(nn.Module):
             f1, f2, f3 = feature_map_channels
 
         cat_channels = in_dim + f1
-        self.conv1 = nn.Sequential(conv_bn_relu(cat_channels, 8 * channels_num),
-                                   conv_bn_relu(8 * channels_num, 8 * channels_num))
-        self.deconv1 = nn.Sequential(nn.ConvTranspose2d(8 * channels_num, 4 * channels_num,
-                                                        kernel_size=3, stride=2, padding=1,
-                                                        output_padding=1),
+        self.conv1 = nn.Sequential(conv_bn_relu(cat_channels, 256),
+                                   conv_bn_relu(256, 256))
+        self.deconv1 = nn.Sequential(nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
                                      nn.LeakyReLU())
 
-        cat_channels = 4 * channels_num + f2
-        self.conv2 = nn.Sequential(conv_bn_relu(cat_channels, 4 * channels_num),
-                                   conv_bn_relu(4 * channels_num, 4 * channels_num))
-        self.deconv2 = nn.Sequential(nn.ConvTranspose2d(4 * channels_num, 2 * channels_num,
-                                                        kernel_size=3, stride=2, padding=1,
-                                                        output_padding=1),
+        cat_channels = 128 + f2
+        self.conv2 = nn.Sequential(conv_bn_relu(cat_channels, 128),
+                                   conv_bn_relu(128, 128))
+        self.deconv2 = nn.Sequential(nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
                                      nn.LeakyReLU())
 
-        cat_channels = 2 * channels_num + f3
-        self.conv3 = nn.Sequential(conv_bn_relu(cat_channels, 2 * channels_num),
-                                   conv_bn_relu(2 * channels_num, 2 * channels_num))
-        self.deconv3 = nn.Sequential(nn.ConvTranspose2d(2 * channels_num, channels_num,
-                                                        kernel_size=3, stride=2, padding=1,
-                                                        output_padding=1),
+        cat_channels = 64 + f3
+        self.conv3 = nn.Sequential(conv_bn_relu(cat_channels, 64),
+                                   conv_bn_relu(64, 64))
+        self.deconv3 = nn.Sequential(nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
                                      nn.LeakyReLU())
-        self.conv4 = nn.Sequential(conv_bn_relu(channels_num, channels_num),
-                                   conv_bn_relu(channels_num, channels_num))
+        self.conv4 = nn.Sequential(conv_bn_relu(32, 32),
+                                   conv_bn_relu(32, 32))
 
     def forward(self, x, fuse=None, get_feature_map=False):
         if fuse and fuse[0] is not None:
@@ -158,15 +149,15 @@ class TextConversionNet(nn.Module):
     def __init__(self, in_dim=3):
         super(TextConversionNet, self).__init__()
         self.t_encoder = nn.Sequential(EncoderNet(in_dim),
-                                       ResNet(8 * channels_num))
+                                       ResNet(256))
         self.s_encoder = nn.Sequential(EncoderNet(in_dim),
-                                       ResNet(8 * channels_num))
-        self.sk_decoder = nn.Sequential(DecoderNet(16 * channels_num),
-                                        nn.Conv2d(channels_num, 1, kernel_size=3, padding=1),
+                                       ResNet(256))
+        self.sk_decoder = nn.Sequential(DecoderNet(2 * 256),
+                                        nn.Conv2d(32, 1, kernel_size=3, padding=1),
                                         nn.Sigmoid())
-        self.t_decoder = DecoderNet(16 * channels_num)
-        self.t_conv = conv_bn_relu(channels_num + 1, channels_num + 1)
-        self.last = nn.Sequential(nn.Conv2d(channels_num + 1, 3, kernel_size=3, padding=1),
+        self.t_decoder = DecoderNet(2 * 256)
+        self.t_conv = conv_bn_relu(32 + 1, 32 + 1)
+        self.last = nn.Sequential(nn.Conv2d(32 + 1, 3, kernel_size=3, padding=1),
                                   nn.Tanh())
 
     def forward(self, x_t, x_s):
@@ -189,18 +180,18 @@ class BackgroundInpaintingNet(nn.Module):
     def __init__(self, in_dim=3):
         super(BackgroundInpaintingNet, self).__init__()
         self.encoder = EncoderNet(in_dim)
-        # self.resnet = ResNet(8 * channels_num)
-        self.dilation_net = nn.Sequential(dilated_conv(8 * channels_num),
-                                          dilated_conv(8 * channels_num, padding=4, dilation=4),
-                                          dilated_conv(8 * channels_num, padding=8, dilation=8))
-        self.decoder = DecoderNet(8 * channels_num, encoder_feature_map_channels)
-        self.last = nn.Sequential(nn.Conv2d(channels_num, 3, kernel_size=3, padding=1),
+        self.resnet = ResNet(256)
+        # self.dilation_net = nn.Sequential(dilated_conv(256),
+        #                                   dilated_conv(256, padding=4, dilation=4),
+        #                                   dilated_conv(256, padding=8, dilation=8))
+        self.decoder = DecoderNet(256, [0, 128, 64])
+        self.last = nn.Sequential(nn.Conv2d(32, 3, kernel_size=3, padding=1),
                                   nn.Tanh())
 
     def forward(self, x):
         out, f_encoder = self.encoder(x, get_feature_map=True)
-        # out = self.resnet(out)
-        out = self.dilation_net(out)
+        out = self.resnet(out)
+        # out = self.dilation_net(out)
         out, fuse = self.decoder(out, [None] + f_encoder, get_feature_map=True)
         return self.last(out), fuse
 
@@ -209,9 +200,9 @@ class FusionNet(nn.Module):
     def __init__(self, in_dim=3):
         super(FusionNet, self).__init__()
         self.encoder = EncoderNet(in_dim)
-        self.resnet = ResNet(8 * channels_num)
-        self.decoder = DecoderNet(8 * channels_num, decoder_feature_map_channels)
-        self.last = nn.Sequential(nn.Conv2d(channels_num, 3, kernel_size=3, padding=1),
+        self.resnet = ResNet(256)
+        self.decoder = DecoderNet(256, [256, 128, 64])
+        self.last = nn.Sequential(nn.Conv2d(32, 3, kernel_size=3, padding=1),
                                   nn.Tanh())
 
     def forward(self, x, fuse):
@@ -225,9 +216,9 @@ class NewFusionNet(nn.Module):
     def __init__(self, in_dim=6):
         super(NewFusionNet, self).__init__()
         self.encoder = EncoderNet(in_dim)
-        self.resnet = ResNet(8 * channels_num)
-        self.decoder = DecoderNet(8 * channels_num)
-        self.last = nn.Sequential(nn.Conv2d(channels_num, 3, kernel_size=3, padding=1),
+        self.resnet = ResNet(256)
+        self.decoder = DecoderNet(256)
+        self.last = nn.Sequential(nn.Conv2d(32, 3, kernel_size=3, padding=1),
                                   nn.Tanh())
 
     def forward(self, t_t, t_b):
@@ -280,17 +271,38 @@ class Discriminator(nn.Module):
         return self.conv5(out)
 
 
+class SNDiscriminator(nn.Module):
+    def __init__(self, in_dim=6):
+        super(SNDiscriminator, self).__init__()
+        self.conv1 = nn.Sequential(SpectralNorm(nn.Conv2d(in_dim, 64, kernel_size=3, stride=2, padding=1)),
+                                   nn.LeakyReLU())
+        self.conv2 = nn.Sequential(SpectralNorm(nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)),
+                                   nn.LeakyReLU())
+        self.conv3 = nn.Sequential(SpectralNorm(nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)),
+                                   nn.LeakyReLU())
+        self.conv4 = nn.Sequential(SpectralNorm(nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)),
+                                   nn.LeakyReLU())
+        self.conv5 = nn.Sequential(nn.Conv2d(512, 1, kernel_size=3, stride=1, padding=1))
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = self.conv3(out)
+        out = self.conv4(out)
+        return self.conv5(out)
+
+
 class DiscriminatorMixed(nn.Module):
-    def __init__(self):
+    def __init__(self, in_dim1=6, in_dim2=6):
         super(DiscriminatorMixed, self).__init__()
-        self.D_background_inpainting = Discriminator()
-        self.D_fusion = Discriminator()
+        self.D1 = Discriminator(in_dim1)
+        self.D2 = Discriminator(in_dim2)
 
     def forward(self, inputs):
-        i_db, i_df = inputs
-        o_db = self.D_background_inpainting(i_db)
-        o_df = self.D_fusion(i_df)
-        return o_db, o_df
+        x1, x2 = inputs
+        o1 = self.D1(x1)
+        o2 = self.D2(x2)
+        return o1, o2
 
 
 def get_vgg_model():

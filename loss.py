@@ -78,14 +78,15 @@ def build_vgg_loss(x):
     return l_per, l_style
 
 
-def build_l_t_loss(o_sk, o_t, o_dt, t_sk, t_t, mask_t):
+def build_l_t_loss(o_sk, o_t, o_dt, o_dsk, t_sk, t_t, mask_t):
     l_t_gan = build_gan_loss(o_dt)
+    l_sk_gan = build_gan_loss(o_dsk)
     l_t_sk = cfg.lt_alpha * build_dice_loss(t_sk, o_sk)
     l_t_l1 = build_l1_loss_with_mask(t_t, o_t, mask_t)
 
-    l_t = l_t_gan + l_t_l1 + l_t_sk
+    l_t = l_t_gan + l_sk_gan + l_t_l1 + l_t_sk
 
-    return l_t, [l_t_gan, l_t_sk, l_t_l1]
+    return l_t, [l_t_gan, l_sk_gan, l_t_sk, l_t_l1]
 
 
 def build_l_b_loss(o_db, o_b, t_b):
